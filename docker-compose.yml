@@ -1,0 +1,55 @@
+# DevBoard AI — UI + Go backend + Postgres + Claude.
+#
+#   browser ──▶ frontend (vite preview :4173) ──/api──▶ backend (Go) ──▶ postgres
+#                                                              │
+#                                                              └──▶ api.anthropic.com
+#
+# Every configurable value lives in .env — Compose loads it automatically and
+# fills in the ${...} placeholders below. Edit .env, not this file.
+#
+# Bring it up:  docker compose up --build
+# Then open:    http://localhost:8080   (FRONTEND_HOST_PORT)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "${POSTGRES_HOST_PORT}:5432"
+
+  backend:
+    build: ./backend
+    image: devboard-ai-backend:${IMAGE_TAG:-latest}
+    environment:
+      PORT: "${BACKEND_PORT}"
+      POSTGRES_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-claude-opus-5}"
+      ANTHROPIC_TIMEOUT_SECONDS: "${ANTHROPIC_TIMEOUT_SECONDS:-20}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_HOST_PORT}:${BACKEND_PORT}"   # host:container — direct curl/debug; the UI uses the gateway
+
+  frontend:
+    build: ./frontend
+    image: devboard-ai-frontend:${IMAGE_TAG:-latest}
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_HOST_PORT}:4173"   # vite preview serves on 4173 inside the container
+
+volumes:
+  pgdata:
