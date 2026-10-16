@@ -2,7 +2,11 @@
 package main
 
 import (
+	"github.com/gin-gonic/gin"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -34,5 +38,41 @@ func TestToStringSlice(t *testing.T) {
 	}
 	if len(got) != 2 || got[0] != "frontend" || got[1] != "urgent" {
 		t.Errorf("toStringSlice = %v, want [frontend urgent]", got)
+	}
+}
+
+func TestInvalidTaskWritesReturn400BeforeDatabase(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/tasks", createTask)
+	router.PATCH("/tasks/:id", updateTask)
+	for _, body := range []string{
+		`{"title":"ok","project_id":1,"status":"invalid"}`,
+		`{"title":"ok","project_id":1,"priority":"urgent"}`,
+		`{"title":"   ","project_id":1}`,
+		`{"title":"ok","project_id":-1}`,
+	} {
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/tasks", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(response, request)
+		if response.Code != 400 {
+			t.Fatalf("POST %s returned %d", body, response.Code)
+		}
+	}
+	for _, body := range []string{`{"title":null}`, `{"title":42}`, `{"status":[]}`, `{"priority":null}`, `{"description":{}}`, `{"title":" "}`} {
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPatch, "/tasks/1", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(response, request)
+		if response.Code != 400 {
+			t.Fatalf("PATCH %s returned %d", body, response.Code)
+		}
+	}
+}
+
+func TestValidTaskFieldValidation(t *testing.T) {
+	if err := validateTaskFields(map[string]interface{}{"title": "Fix bug", "status": "done", "priority": "high", "description": nil}); err != nil {
+		t.Fatal(err)
 	}
 }

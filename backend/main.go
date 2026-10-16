@@ -11,11 +11,12 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/lib/pq"
 	"github.com/lib/pq"
+	_ "github.com/lib/pq"
 )
 
 var db *sql.DB
@@ -173,7 +174,7 @@ func createTask(c *gin.Context) {
 		Priority    string   `json:"priority"`
 		Tags        []string `json:"tags"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil || body.Title == "" || body.ProjectID == 0 {
+	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Title) == "" || body.ProjectID <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "title and project_id are required"})
 		return
 	}
@@ -183,6 +184,11 @@ func createTask(c *gin.Context) {
 	if body.Priority == "" {
 		body.Priority = "medium"
 	}
+	if err := validateTaskFields(map[string]interface{}{"title": body.Title, "description": body.Description, "status": body.Status, "priority": body.Priority}); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	task, err := insertTask(db, body.Title, body.Description, body.ProjectID, body.Status, body.Priority, body.Tags)
 	if err != nil {
 		fail(c, err)
@@ -220,6 +226,11 @@ func updateTask(c *gin.Context) {
 	var patch map[string]interface{}
 	if err := c.ShouldBindJSON(&patch); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+
+	if err := validateTaskFields(patch); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
