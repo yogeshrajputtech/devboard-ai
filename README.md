@@ -68,6 +68,16 @@ make reset     # wipe the database and start fresh
 make smoke     # quick check that everything (including AI wiring) works
 ```
 
+Check both the backend and the frontend proxy after startup:
+
+```bash
+curl -fsS http://localhost:8081/health
+curl -fsS http://localhost:8080/api/health
+```
+
+Both responses should include the same `ai_enabled` value. If only the
+first request works, check `docker compose logs frontend`.
+
 ## The API
 
 The browser calls these as `/api/...`; the backend serves them at the root.
