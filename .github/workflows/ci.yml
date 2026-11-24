@@ -15,9 +15,7 @@ permissions:
 
 jobs:
 
-  # -------------------------------
-  # 1. Backend CI - Go
-  # -------------------------------
+  # 1 Backend
   backend:
     name: Backend (Go)
     runs-on: ubuntu-latest
@@ -34,6 +32,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.24"
+          cache-dependency-path: backend/go.sum
 
       - name: Download Dependencies
         run: go mod tidy
@@ -47,9 +46,7 @@ jobs:
       - name: Go Tests
         run: go test ./...
 
-  # -------------------------------
-  # 2. Frontend CI - Node.js
-  # -------------------------------
+  # 2 Frontend
   frontend:
     name: Frontend (Node.js)
     runs-on: ubuntu-latest
@@ -78,9 +75,7 @@ jobs:
       - name: Run Frontend Tests
         run: npm run test
 
-  # -------------------------------
-  # 3. Docker Build & Push - Frontend
-  # -------------------------------
+  # 3 Docker frontend
   docker-frontend:
     name: Docker Build & Push (Frontend)
     runs-on: ubuntu-latest
@@ -112,9 +107,7 @@ jobs:
           push: true
           tags: eryogeshdevops/devboard-ai-frontend:latest
 
-  # -------------------------------
-  # 4. Docker Build & Push - Backend
-  # -------------------------------
+  # 4 Docker backend
   docker-backend:
     name: Docker Build & Push (Backend)
     runs-on: ubuntu-latest
@@ -146,11 +139,10 @@ jobs:
           push: true
           tags: eryogeshdevops/devboard-ai-backend:latest
 
-  # -------------------------------
-  # 5. CD - Deploy to AWS EC2
-  # -------------------------------
+  # 5 CD
   deploy:
     name: Deploy to AWS EC2
+
     needs:
       - docker-frontend
       - docker-backend
