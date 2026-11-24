@@ -1,18 +1,8 @@
-# DevBoard AI — UI + Go backend + Postgres + Claude.
-#
-#   browser ──▶ frontend (vite preview :4173) ──/api──▶ backend (Go) ──▶ postgres
-#                                                              │
-#                                                              └──▶ api.anthropic.com
-#
-# Every configurable value lives in .env — Compose loads it automatically and
-# fills in the ${...} placeholders below. Edit .env, not this file.
-#
-# Bring it up:  docker compose up --build
-# Then open:    http://localhost:8080   (FRONTEND_HOST_PORT)
 
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -25,14 +15,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    ports:
-      - "${POSTGRES_HOST_PORT}:5432"
+    # Database is accessible only to other Compose services.
 
   backend:
-    build: ./backend
-    image: devboard-ai-backend:${IMAGE_TAG:-latest}
+    image: eryogeshdevops/devboard-ai-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     environment:
-      PORT: "${BACKEND_PORT}"
+      PORT: "${BACKEND_PORT:-8080}"
       POSTGRES_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-claude-opus-5}"
@@ -41,15 +30,15 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "${BACKEND_HOST_PORT}:${BACKEND_PORT}"   # host:container — direct curl/debug; the UI uses the gateway
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8081}:${BACKEND_PORT:-8080}"
 
   frontend:
-    build: ./frontend
-    image: devboard-ai-frontend:${IMAGE_TAG:-latest}
+    image: eryogeshdevops/devboard-ai-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     depends_on:
       - backend
     ports:
-      - "${FRONTEND_HOST_PORT}:4173"   # vite preview serves on 4173 inside the container
+      - "${FRONTEND_HOST_PORT:-8080}:4173"
 
 volumes:
   pgdata:

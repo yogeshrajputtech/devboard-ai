@@ -1,39 +1,153 @@
-name: CI
+
+name: CI-CD
 
 on:
   push:
+    branches:
+      - main
+      - ci-practice
   pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 jobs:
+
+  # 1 Backend
   backend:
     name: Backend (Go)
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: backend
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
           go-version: "1.24"
-      - run: go mod tidy
-      - run: go vet ./...
-      - run: go build ./...
-      # The AI handler tests stub api.anthropic.com via httptest + a base-URL
-      # override (see backend/ai_test.go) — no ANTHROPIC_API_KEY secret needed.
-      - run: go test ./...
+          cache-dependency-path: backend/go.sum
 
+      - name: Download Dependencies
+        run: go mod tidy
+
+      - name: Go Vet
+        run: go vet ./...
+
+      - name: Go Build
+        run: go build ./...
+
+      - name: Go Tests
+        run: go test ./...
+
+  # 2 Frontend
   frontend:
-    name: Frontend (Node)
+    name: Frontend (Node.js)
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: frontend
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm install
-      - run: npm run build
-      - run: npm run test
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Frontend
+        run: npm run build
+
+      - name: Run Frontend Tests
+        run: npm run test
+
+  # 3 Docker frontend
+  docker-frontend:
+    name: Docker Build & Push (Frontend)
+    runs-on: ubuntu-latest
+
+    needs:
+      - backend
+      - frontend
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: eryogeshdevops/devboard-ai-frontend:latest
+
+  # 4 Docker backend
+  docker-backend:
+    name: Docker Build & Push (Backend)
+    runs-on: ubuntu-latest
+
+    needs:
+      - backend
+      - frontend
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: eryogeshdevops/devboard-ai-backend:latest
+
+  # 5 CD
+  deploy:
+    name: Deploy to AWS EC2
+
+    needs:
+      - docker-frontend
+      - docker-backend
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    uses: ./.github/workflows/cd.yml
+    secrets: inherit
